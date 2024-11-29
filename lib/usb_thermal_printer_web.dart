@@ -248,6 +248,23 @@ Future<void> printText(
   var buffer = Uint8List.fromList(commands).buffer;
   await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
 }
+Future<void> printTwoColumnRow({
+  required String leftLabel,
+  required String rightValue,
+  int lineWidth = 48, // Total characters per line for your printer
+}) async {
+  // Calculate padding between the left label and right value
+  int padding = lineWidth - leftLabel.length - rightValue.length;
+  if (padding < 0) {
+    padding = 1; // Prevent overlap if the label and value are too long
+  }
+
+  // Format the row with left-aligned label and right-aligned value
+  String row = "${leftLabel.padRight(leftLabel.length + padding)}$rightValue";
+
+  // Print the formatted row
+  await printTextAlign(row, alignment: TextAlign.left); // Row is left-aligned overall
+}
 
 
 }
