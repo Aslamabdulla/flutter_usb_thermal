@@ -33,38 +33,40 @@ class WebThermalPrinter {
     await usbDevice.open(pairedDevice);
     await usbDevice.claimInterface(pairedDevice, interfaceNumber);
   }
+Future<void> printRow({
+  required String item,
+  required String qty,
+  required String price,
+  required String total,
+  int lineWidth = 48, // Total characters per line for your printer
+  bool bold =false
+}) async {
+  const itemColumnWidth = 24; // Max width for the Item column
+  const qtyColumnWidth = 6;  // Max width for the Qty column
+  const priceColumnWidth = 8; // Max width for the Price column
+  const totalColumnWidth = 10; // Max width for the Total column
 
-  Future<void> printRow(
-      String title,
-      String value,
-      ) async {
-    if (!kIsWeb) {
-      return;
-    }
-    var titleColumnWidth = 18;
-    var valueColumnWidth = 12;
+  // Split item into multiple lines if it's too long
+  List<String> itemLines = _splitStringIntoRows(item, itemColumnWidth);
 
-    // Split the title and value into separate rows
-    var titleRows = _splitStringIntoRows(title, titleColumnWidth);
-    var valueRows = _splitStringIntoRows(value, valueColumnWidth);
+  // Ensure Qty, Price, and Total align in each row
+  String formattedQty = qty.padLeft(qtyColumnWidth);
+  String formattedPrice = price.padLeft(priceColumnWidth);
+  String formattedTotal = total.padLeft(totalColumnWidth);
 
-    // Print each row separately
-    for (var i = 0; i < max(titleRows.length, valueRows.length); i++) {
-      var titleRow = titleRows.length > i ? titleRows[i] : '';
-      var valueRow = valueRows.length > i ? valueRows[i] : '';
+  // Print each line of the row
+  for (int i = 0; i < itemLines.length; i++) {
+    String itemLine = itemLines[i].padRight(itemColumnWidth);
 
-      var encodedTitle = utf8.encode(titleRow.padRight(titleColumnWidth));
-      var encodedValue = utf8.encode(valueRow.padLeft(valueColumnWidth));
+    // Print the first row with Qty, Price, and Total; subsequent rows only include Item
+    String row = (i == 0)
+        ? "$itemLine$formattedQty$formattedPrice$formattedTotal"
+        : itemLine;
 
-      var buffer = Uint8List.fromList([
-        ...encodedTitle,
-        ...encodedValue,
-        0x0A, // Line feed
-      ]).buffer;
-
-      await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
-    }
+    await printTextAlign(row, alignment: TextAlign.left,bold: bold); // Left-align the whole row
   }
+}
+
 
   List<String> _splitStringIntoRows(String str, int rowWidth) {
     var rows = <String>[];
@@ -112,29 +114,39 @@ class WebThermalPrinter {
     await usbDevice.transferOut(
         pairedDevice, endpointNumber, resetAlignData.buffer);
   }
+Future<void> printText(
+  String text, {
+  bool? bold,
+  bool centerAlign = false,
+  int lineWidth = 48, // Adjust this value to match your printer's character width per line
+}) async {
+  if (kIsWeb == false) {
+    return;
+  }
 
-  Future<void> printText(
-      String text, {
-        bool? bold,
-        bool centerAlign = false,
-      }) async {
-    if (kIsWeb == false) {
-      return;
-    }
-    var encodedText =
-    utf8.encode((bold ?? false) ? "\x1B[$text\x1B\n" : "$text\n");
-    if (centerAlign) {
-      var width = 28; // Change this to adjust the width of the printer
-      var leftPadding = ((width - text.length) / 2).floor();
-      var rightPadding = width - text.length - leftPadding;
-      var paddingString =
-          ''.padLeft(leftPadding) + text + ''.padRight(rightPadding);
-      encodedText = utf8.encode("\n$paddingString\n");
-    }
+  String formattedText = text;
+
+  // Apply bold if needed
+  if (bold ?? false) {
+    formattedText = "\x1B[!0m$text\x1B[0m";
+  }
+
+  // Apply center alignment if required
+  if (centerAlign) {
+    var leftPadding = ((lineWidth - text.length) / 2).floor();
+    formattedText = ''.padLeft(leftPadding) + text;
+  }
+
+  // Ensure the text doesn't exceed the line width
+  var rows = _splitStringIntoRows(formattedText, lineWidth);
+
+  // Print each row
+  for (var row in rows) {
+    var encodedText = utf8.encode(row + '\n');
     var buffer = Uint8List.fromList(encodedText).buffer;
-
     await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
   }
+}
 
   Future<void> printEmptyLine() async {
     if (kIsWeb == false) {
@@ -149,7 +161,7 @@ class WebThermalPrinter {
     if (kIsWeb == false) {
       return;
     }
-    var encodedText = utf8.encode("\n--------------------------------\n");
+    var encodedText = utf8.encode("\n------------------------------------------------\n");
     var buffer = Uint8List.fromList(encodedText).buffer;
     await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
   }
@@ -160,4 +172,103 @@ class WebThermalPrinter {
     }
     await usbDevice.close(pairedDevice);
   }
+     Future<void> cut({bool? isFull}) async{
+    List<int> bytes = [];
+    bytes += emptyLines(5);
+    if (isFull??false) {
+      bytes += '\x1DV0'.codeUnits;
+    } else {
+      bytes += '\x1DV1'.codeUnits;
+    }
+   final data= Uint8List.fromList(bytes);
+    await usbDevice.transferOut(pairedDevice, endpointNumber, data.buffer);
+  }
+   List<int> emptyLines(int n) {
+    List<int> bytes = [];
+    if (n > 0) {
+      bytes += List.filled(n, '\n').join().codeUnits;
+    }
+    return bytes;
+  }
+ Future<void> printTextAlign(
+  String text, {
+  bool bold = false,
+  TextAlign alignment = TextAlign.left,
+  int fontSize = 1, // Font size: 1 = normal, 2 = double-size
+  int lineWidth = 48, // Total characters per line for your printer
+}) async {
+  if (!kIsWeb) {
+    return;
+  }
+
+  List<int> commands = [];
+
+  // Apply alignment
+  switch (alignment) {
+    case TextAlign.center:
+      commands.addAll([0x1B, 0x61, 0x01]); // Center align
+      break;
+    case TextAlign.right:
+      commands.addAll([0x1B, 0x61, 0x02]); // Right align
+      break;
+    case TextAlign.left:
+    default:
+      commands.addAll([0x1B, 0x61, 0x00]); // Left align
+      break;
+  }
+
+  // Apply bold
+  if (bold) {
+    commands.addAll([0x1B, 0x45, 0x01]); // Bold on
+  }
+
+  // Set font size
+  if (fontSize == 2) {
+    commands.addAll([0x1D, 0x21, 0x11]); // Double width and height
+  } else {
+    commands.addAll([0x1D, 0x21, 0x00]); // Normal size
+  }
+
+  // Split and add text
+  var rows = _splitStringIntoRows(text, lineWidth ~/ fontSize);
+  for (var row in rows) {
+    commands.addAll(utf8.encode(row + '\n'));
+  }
+
+  // Reset bold and font size
+  if (bold) {
+    commands.addAll([0x1B, 0x45, 0x00]); // Bold off
+  }
+  commands.addAll([0x1D, 0x21, 0x00]); // Font size reset
+
+  // Reset alignment
+  commands.addAll([0x1B, 0x61, 0x00]);
+
+  // Send commands to printer
+  var buffer = Uint8List.fromList(commands).buffer;
+  await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
+}
+
+
+}
+String formatRow(String label, String value, int lineWidth) {
+  const labelColumnWidth = 35; // Fixed width for the label column
+  const valueColumnWidth = 13; // Fixed width for the value column
+
+  // Truncate or pad the label to fit the label column width
+  String formattedLabel = label.padRight(labelColumnWidth).substring(0, labelColumnWidth);
+
+  // Truncate or pad the value to align within the value column width
+  String formattedValue = value.padLeft(valueColumnWidth).substring(0, valueColumnWidth);
+
+  // Combine the label and value
+  return "$formattedLabel$formattedValue";
+}
+
+
+
+ enum TextAlign {
+  left,
+  center,
+  right,
 }
