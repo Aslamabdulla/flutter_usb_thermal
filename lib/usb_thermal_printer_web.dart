@@ -17,7 +17,20 @@ class WebThermalPrinter {
 
   //By Default, it is usually 1
   var endpointNumber;
-
+  late int lineWidth;
+  late int itemColumnWidth;
+  late int qtyColumnWidth;
+  late int priceColumnWidth;
+  late int totalColumnWidth;
+final int paperWidth;
+WebThermalPrinter({required this.paperWidth}){
+  lineWidth = paperWidth == 80 ? 48 : paperWidth == 72 ? 42 : 36;
+    itemColumnWidth = (lineWidth * 0.45).toInt(); // 50% of the lineWidth for item column
+    qtyColumnWidth = (lineWidth * 0.15).toInt();  // 15% of the lineWidth for quantity column
+    priceColumnWidth = (lineWidth * 0.20).toInt(); // 15% of the lineWidth for price column
+    totalColumnWidth = (lineWidth * 0.20).toInt();
+}
+     
   Future<void> pairDevice(
       {required int vendorId,
         required int productId,
@@ -33,19 +46,13 @@ class WebThermalPrinter {
     await usbDevice.open(pairedDevice);
     await usbDevice.claimInterface(pairedDevice, interfaceNumber);
   }
-Future<void> printRow({
+  Future<void> printRow({
   required String item,
   required String qty,
   required String price,
   required String total,
-  int lineWidth = 48, // Total characters per line for your printer
-  bool bold =false
+  bool bold = false,
 }) async {
-  const itemColumnWidth = 24; // Max width for the Item column
-  const qtyColumnWidth = 6;  // Max width for the Qty column
-  const priceColumnWidth = 8; // Max width for the Price column
-  const totalColumnWidth = 10; // Max width for the Total column
-
   // Split item into multiple lines if it's too long
   List<String> itemLines = _splitStringIntoRows(item, itemColumnWidth);
 
@@ -63,26 +70,27 @@ Future<void> printRow({
         ? "$itemLine$formattedQty$formattedPrice$formattedTotal"
         : itemLine;
 
-    await printTextAlign(row, alignment: TextAlign.left,bold: bold); // Left-align the whole row
+    await printTextAlign(row, alignment: TextAlign.left, bold: bold); // Left-align the whole row
   }
 }
 
-
-  List<String> _splitStringIntoRows(String str, int rowWidth) {
-    var rows = <String>[];
-    var currentRow = '';
-    for (var word in str.split(' ')) {
-      if ((currentRow + word).length > rowWidth) {
-        rows.add(currentRow);
-        currentRow = '';
-      }
-      currentRow += word + ' ';
-    }
-    if (currentRow.isNotEmpty) {
+// Function to split string into multiple lines for long items
+List<String> _splitStringIntoRows(String str, int rowWidth) {
+  var rows = <String>[];
+  var currentRow = '';
+  for (var word in str.split(' ')) {
+    if ((currentRow + word).length > rowWidth) {
       rows.add(currentRow);
+      currentRow = '';
     }
-    return rows;
+    currentRow += word + ' ';
   }
+  if (currentRow.isNotEmpty) {
+    rows.add(currentRow);
+  }
+  return rows;
+}
+
 
   Future<void> printBarcode(String barcodeData) async {
     if (kIsWeb == false) {
@@ -118,7 +126,7 @@ Future<void> printText(
   String text, {
   bool? bold,
   bool centerAlign = false,
-  int lineWidth = 48, // Adjust this value to match your printer's character width per line
+ // Adjust this value to match your printer's character width per line
 }) async {
   if (kIsWeb == false) {
     return;
@@ -157,14 +165,25 @@ Future<void> printText(
     await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
   }
 
-  Future<void> printDottedLine() async {
-    if (kIsWeb == false) {
-      return;
-    }
-    var encodedText = utf8.encode("\n------------------------------------------------\n");
-    var buffer = Uint8List.fromList(encodedText).buffer;
-    await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
+ Future<void> printDottedLine() async {
+  if (kIsWeb == false) {
+    return;
   }
+
+  // Determine the line width based on the paper size
+  int lineWidth = paperWidth == 80 ? 48 :paperWidth == 72? 42:36; // 80mm printer gets 56 columns, 72mm gets 42
+
+  // Create a dotted line with the appropriate number of characters
+  String dottedLine = '-' * lineWidth;
+
+  // Encode the dotted line into bytes
+  var encodedText = utf8.encode("$dottedLine\n");
+
+  // Send the bytes to the printer
+  var buffer = Uint8List.fromList(encodedText).buffer;
+  await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
+}
+
 
   Future<void> closePrinter() async {
     if (kIsWeb == false) {
@@ -195,7 +214,6 @@ Future<void> printText(
   bool bold = false,
   TextAlign alignment = TextAlign.left,
   int fontSize = 1, // Font size: 1 = normal, 2 = double-size
-  int lineWidth = 48, // Total characters per line for your printer
 }) async {
   if (!kIsWeb) {
     return;
@@ -203,21 +221,7 @@ Future<void> printText(
 
   List<int> commands = [];
 
-  // Apply alignment
-  switch (alignment) {
-    case TextAlign.center:
-      commands.addAll([0x1B, 0x61, 0x01]); // Center align
-      break;
-    case TextAlign.right:
-      commands.addAll([0x1B, 0x61, 0x02]); // Right align
-      break;
-    case TextAlign.left:
-    default:
-      commands.addAll([0x1B, 0x61, 0x00]); // Left align
-      break;
-  }
-
-  // Apply bold
+  // Apply bold formatting
   if (bold) {
     commands.addAll([0x1B, 0x45, 0x01]); // Bold on
   }
@@ -229,29 +233,47 @@ Future<void> printText(
     commands.addAll([0x1D, 0x21, 0x00]); // Normal size
   }
 
-  // Split and add text
+  // Split the text into multiple lines based on the line width
   var rows = _splitStringIntoRows(text, lineWidth ~/ fontSize);
+
+  // Apply alignment and print each line
   for (var row in rows) {
+    // Apply the desired alignment for each line
+    switch (alignment) {
+      case TextAlign.center:
+        commands.addAll([0x1B, 0x61, 0x01]); // Center align
+        break;
+      case TextAlign.right:
+        commands.addAll([0x1B, 0x61, 0x02]); // Right align
+        break;
+      case TextAlign.left:
+      default:
+        commands.addAll([0x1B, 0x61, 0x00]); // Left align
+        break;
+    }
+
+    // Add the row of text and apply formatting
     commands.addAll(utf8.encode(row + '\n'));
   }
 
-  // Reset bold and font size
+  // Reset bold and font size to default
   if (bold) {
     commands.addAll([0x1B, 0x45, 0x00]); // Bold off
   }
-  commands.addAll([0x1D, 0x21, 0x00]); // Font size reset
+  commands.addAll([0x1D, 0x21, 0x00]); // Reset font size
 
-  // Reset alignment
+  // Reset alignment to left by default
   commands.addAll([0x1B, 0x61, 0x00]);
 
-  // Send commands to printer
+  // Send the commands to the printer
   var buffer = Uint8List.fromList(commands).buffer;
   await usbDevice.transferOut(pairedDevice, endpointNumber, buffer);
 }
+
 Future<void> printTwoColumnRow({
   required String leftLabel,
   required String rightValue,
-  int lineWidth = 48, // Total characters per line for your printer
+ // Total characters per line for your printer
 }) async {
   // Calculate padding between the left label and right value
   int padding = lineWidth - leftLabel.length - rightValue.length;
@@ -266,21 +288,24 @@ Future<void> printTwoColumnRow({
   await printTextAlign(row, alignment: TextAlign.left); // Row is left-aligned overall
 }
 
-
-}
-String formatRow(String label, String value, int lineWidth) {
-  const labelColumnWidth = 35; // Fixed width for the label column
-  const valueColumnWidth = 13; // Fixed width for the value column
-
+String formatRow(String label, String value, ) {
+  // Adjust label and value column widths based on the lineWidth
+  // For example, for 80mm paper (56 chars) and 72mm paper (42 chars), we define:
+  int labelColumnWidth = (lineWidth * 0.65).toInt();  // 65% of the line width for label
+  int valueColumnWidth = (lineWidth * 0.35).toInt();  // 35% of the line width for value
+  
   // Truncate or pad the label to fit the label column width
   String formattedLabel = label.padRight(labelColumnWidth).substring(0, labelColumnWidth);
 
   // Truncate or pad the value to align within the value column width
   String formattedValue = value.padLeft(valueColumnWidth).substring(0, valueColumnWidth);
 
-  // Combine the label and value
+  // Combine the label and value, ensuring that both are within their respective columns
   return "$formattedLabel$formattedValue";
 }
+}
+
+
 
 
 
