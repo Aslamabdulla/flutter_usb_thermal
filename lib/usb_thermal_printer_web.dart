@@ -22,29 +22,41 @@ class WebThermalPrinter {
   late int qtyColumnWidth;
   late int priceColumnWidth;
   late int totalColumnWidth;
+  String defaultFont ='A';
 final int paperWidth;
-WebThermalPrinter({required this.paperWidth}){
-  lineWidth = paperWidth == 80 ? 48 : paperWidth == 72 ? 42 : 36;
+WebThermalPrinter({required this.paperWidth,required this.defaultFont}){
+  lineWidth = paperWidth == 80 ?defaultFont=="A"? 48:63 : paperWidth == 72 ?defaultFont=="A"? 42 :56:defaultFont=="A"? 36:50;
     itemColumnWidth = (lineWidth * 0.45).toInt(); // 50% of the lineWidth for item column
     qtyColumnWidth = (lineWidth * 0.15).toInt();  // 15% of the lineWidth for quantity column
     priceColumnWidth = (lineWidth * 0.20).toInt(); // 15% of the lineWidth for price column
     totalColumnWidth = (lineWidth * 0.20).toInt();
 }
      
-  Future<void> pairDevice(
+  Future<dynamic> pairDevice(
       {required int vendorId,
         required int productId,
         int? interfaceNo,
-        int? endpointNo}) async {
-    if (kIsWeb == false) {
-      return;
+        int? endpointNo,required bool isPaired,dynamic device,}) async {
+try{
+      if (kIsWeb == false) {
+      return null;
     }
     interfaceNumber = interfaceNo ?? 0;
     endpointNumber = endpointNo ?? 1;
+    if(!isPaired){
     pairedDevice ??= await usbDevice.requestDevices(
         [DeviceFilter(vendorId: vendorId, productId: productId)]);
+    }else{
+      pairedDevice = device;
+    }
+
+        
     await usbDevice.open(pairedDevice);
     await usbDevice.claimInterface(pairedDevice, interfaceNumber);
+    return pairedDevice;
+}catch(e){
+return null;
+}
   }
   Future<void> printRow({
   required String item,
@@ -171,7 +183,7 @@ Future<void> printText(
   }
 
   // Determine the line width based on the paper size
-  int lineWidth = paperWidth == 80 ? 48 :paperWidth == 72? 42:36; // 80mm printer gets 56 columns, 72mm gets 42
+  int lineWidth = paperWidth == 80 ?defaultFont=="A"? 48:63 :paperWidth == 72?defaultFont=="A"? 42:56:defaultFont=="A"? 36:50; // 80mm printer gets 56 columns, 72mm gets 42
 
   // Create a dotted line with the appropriate number of characters
   String dottedLine = '-' * lineWidth;
@@ -209,6 +221,13 @@ Future<void> printText(
     }
     return bytes;
   }
+  void setFont(String font) {
+    if (font == 'A' || font == 'B') {
+      defaultFont = font;
+    } else {
+     defaultFont = "A";
+    }
+  }
  Future<void> printTextAlign(
   String text, {
   bool bold = false,
@@ -221,17 +240,23 @@ Future<void> printText(
 
   List<int> commands = [];
 
+   if (defaultFont == 'B') {
+      commands.addAll([0x1B, 0x4D, 0x01]); // Select Font B
+    } else {
+      commands.addAll([0x1B, 0x4D, 0x00]); // Select Font A
+    }
+    if (fontSize == 2) {
+    commands.addAll([0x1D, 0x21, 0x11]); // Double width and height
+  } else {
+    commands.addAll([0x1D, 0x21, 0x00]); // Normal size
+  }
   // Apply bold formatting
   if (bold) {
     commands.addAll([0x1B, 0x45, 0x01]); // Bold on
   }
 
   // Set font size
-  if (fontSize == 2) {
-    commands.addAll([0x1D, 0x21, 0x11]); // Double width and height
-  } else {
-    commands.addAll([0x1D, 0x21, 0x00]); // Normal size
-  }
+  
 
   // Split the text into multiple lines based on the line width
   var rows = _splitStringIntoRows(text, lineWidth ~/ fontSize);
