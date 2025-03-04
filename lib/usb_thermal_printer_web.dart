@@ -121,34 +121,33 @@ class WebThermalPrinter {
   }
 
   Future<void> printQrCode(String upiLink, {int qrSize = 6}) async {
-    if (!kIsWeb) return; // Ensure it's running on the web
+    if (!kIsWeb) return; 
 
-    // ✅ Validate QR Size (Supported range: 1 to 8)
+
     qrSize = (qrSize < 1 || qrSize > 8) ? 6 : qrSize;
 
-    // ✅ ESC/POS QR Code Size Configuration
+   
     var qrSettingsBytes = Uint8List.fromList([
-      0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, qrSize, // Set QR Code Size
+      0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, qrSize, 
     ]);
 
     var qrStoreBytes = Uint8List.fromList([
       0x1d, 0x28, 0x6b, (upiLink.length + 3) & 0xFF,
-      ((upiLink.length + 3) >> 8) & 0xFF, // Data size (low & high bytes)
-      0x31, 0x50, 0x30, // Store QR Code
-      ...utf8.encode(upiLink), // QR Code Data
+      ((upiLink.length + 3) >> 8) & 0xFF, 
+      0x31, 0x50, 0x30, 
+      ...utf8.encode(upiLink), 
     ]);
 
     var qrPrintBytes = Uint8List.fromList([
-      0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30, // Print QR Code
+      0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30, 
     ]);
 
-    // ✅ Align QR Code to Center
-    var centerAlignBytes =
-        Uint8List.fromList([0x1b, 0x61, 0x01]); // Center align
-    var resetAlignBytes =
-        Uint8List.fromList([0x1b, 0x61, 0x00]); // Reset to left
 
-    // ✅ Send QR Code Data to USB Thermal Printer
+    var centerAlignBytes =
+        Uint8List.fromList([0x1b, 0x61, 0x01]);
+    var resetAlignBytes =
+        Uint8List.fromList([0x1b, 0x61, 0x00]);
+
     await usbDevice.transferOut(
         pairedDevice, endpointNumber, centerAlignBytes.buffer);
     await usbDevice.transferOut(
