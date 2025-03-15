@@ -120,38 +120,68 @@ class WebThermalPrinter {
     return rows;
   }
 
-  Future<void> printQrCode(String upiLink, {int qrSize = 6}) async {
-    if (!kIsWeb) return; 
+  Future<void> printQrCode(String upiLink, {int qrSize = 8}) async {
+    if (!kIsWeb) return;
 
+    // Ensuring qrSize stays within range (1 to 8)
+    qrSize = (qrSize < 1 || qrSize > 8) ? 8 : qrSize;
 
-    qrSize = (qrSize < 1 || qrSize > 8) ? 6 : qrSize;
-
-   
+    // Set QR Code Size (Increasing to max 8)
     var qrSettingsBytes = Uint8List.fromList([
-      0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, qrSize, 
+      0x1d,
+      0x28,
+      0x6b,
+      0x03,
+      0x00,
+      0x31,
+      0x43,
+      qrSize,
     ]);
 
+    // Set QR Code Error Correction Level to 'H' (High, 30% error correction)
+    var qrErrorCorrectionBytes = Uint8List.fromList([
+      0x1d,
+      0x28,
+      0x6b,
+      0x03,
+      0x00,
+      0x31,
+      0x45,
+      0x48,
+    ]);
+
+    // Store QR Code Data
     var qrStoreBytes = Uint8List.fromList([
-      0x1d, 0x28, 0x6b, (upiLink.length + 3) & 0xFF,
-      ((upiLink.length + 3) >> 8) & 0xFF, 
-      0x31, 0x50, 0x30, 
-      ...utf8.encode(upiLink), 
+      0x1d, 0x28, 0x6b,
+      (upiLink.length + 3) & 0xFF, // Low byte of data size
+      ((upiLink.length + 3) >> 8) & 0xFF, // High byte of data size
+      0x31, 0x50, 0x30,
+      ...utf8.encode(upiLink), // Encode the UPI link
     ]);
 
+    // Print QR Code
     var qrPrintBytes = Uint8List.fromList([
-      0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30, 
+      0x1d,
+      0x28,
+      0x6b,
+      0x03,
+      0x00,
+      0x31,
+      0x51,
+      0x30,
     ]);
 
+    // Center Align
+    var centerAlignBytes = Uint8List.fromList([0x1b, 0x61, 0x01]);
+    var resetAlignBytes = Uint8List.fromList([0x1b, 0x61, 0x00]);
 
-    var centerAlignBytes =
-        Uint8List.fromList([0x1b, 0x61, 0x01]);
-    var resetAlignBytes =
-        Uint8List.fromList([0x1b, 0x61, 0x00]);
-
+    // Send Commands to Printer
     await usbDevice.transferOut(
         pairedDevice, endpointNumber, centerAlignBytes.buffer);
     await usbDevice.transferOut(
         pairedDevice, endpointNumber, qrSettingsBytes.buffer);
+    await usbDevice.transferOut(
+        pairedDevice, endpointNumber, qrErrorCorrectionBytes.buffer);
     await usbDevice.transferOut(
         pairedDevice, endpointNumber, qrStoreBytes.buffer);
     await usbDevice.transferOut(
@@ -316,10 +346,17 @@ class WebThermalPrinter {
       commands.addAll([0x1B, 0x4D, 0x00]); // Select Font A
     }
     if (fontSize == 2) {
-      commands.addAll([0x1D, 0x21, 0x11]); // Double width and height
+      // Full double size: double width and height.
+      commands.addAll([0x1D, 0x21, 0x11]);
+    } else if (fontSize == 3) {
+      // Intermediate size: double width only (or you could choose double height only).
+      // 0x01: horizontal scaling = 2, vertical scaling = 1.
+      commands.addAll([0x1D, 0x21, 0x01]);
     } else {
-      commands.addAll([0x1D, 0x21, 0x00]); // Normal size
+      // Normal size.
+      commands.addAll([0x1D, 0x21, 0x00]);
     }
+
     // Apply bold formatting
     if (bold) {
       commands.addAll([0x1B, 0x45, 0x01]); // Bold on
