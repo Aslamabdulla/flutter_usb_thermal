@@ -1,7 +1,7 @@
 name: usb_thermal_printer_web
 description: A package that allows you to connect your Flutter Web with thermal printer via USB and print.
-version: 0.0.7
-homepage: "https://github.com/usmannaushahi/usb_thermal_printer_web"
+version: 0.0.8
+homepage: "azlamabdullaaz@gmail.com"
 
 environment:
   sdk: ">=2.19.2 <3.0.0"
